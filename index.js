@@ -165,6 +165,12 @@ app.get("/p/:id", async (req, res) => {
   if (!paste) {
     return res.status(404).send("Not found");
   }
+  app.get("/api/pastes", (req, res) => {
+  res.status(405).json({
+    error: "Method not allowed",
+    message: "Use POST /api/pastes to create a paste"
+  });
+});
 
   const currentTime = now(req);
 
