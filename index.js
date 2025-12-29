@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { nanoid } from "nanoid";
 import { kv } from "@vercel/kv";
@@ -55,19 +56,17 @@ app.get("/api/healthz", async (req, res) => {
 });
 
 /* =======================
-   CREATE PASTE (API)
+   CORE CREATE LOGIC (REUSED)
 ======================= */
-app.post("/api/pastes", async (req, res) => {
-  const { content, ttl_seconds, max_views } = req.body;
-
+async function createPaste({ content, ttl_seconds, max_views }, req) {
   if (!content || typeof content !== "string" || content.trim() === "") {
-    return res.status(400).json({ error: "Invalid content" });
+    throw new Error("Invalid content");
   }
   if (ttl_seconds !== undefined && (!Number.isInteger(ttl_seconds) || ttl_seconds < 1)) {
-    return res.status(400).json({ error: "Invalid ttl_seconds" });
+    throw new Error("Invalid ttl_seconds");
   }
   if (max_views !== undefined && (!Number.isInteger(max_views) || max_views < 1)) {
-    return res.status(400).json({ error: "Invalid max_views" });
+    throw new Error("Invalid max_views");
   }
 
   const id = nanoid(8);
@@ -82,41 +81,45 @@ app.post("/api/pastes", async (req, res) => {
   };
 
   await kv.set(`paste:${id}`, paste);
+  return id;
+}
 
-  res.status(201).json({
-    id,
-    url: `${req.protocol}://${req.get("host")}/p/${id}`
-  });
+/* =======================
+   CREATE PASTE (API)
+======================= */
+app.post("/api/pastes", async (req, res) => {
+  try {
+    const id = await createPaste(req.body, req);
+    res.status(201).json({
+      id,
+      url: `${req.protocol}://${req.get("host")}/p/${id}`
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 /* =======================
-   CREATE PASTE (FORM) — FIXED
+   CREATE PASTE (FORM) ✅ FIXED
 ======================= */
 app.post("/create", async (req, res) => {
   try {
-    const response = await fetch(`${req.protocol}://${req.get("host")}/api/pastes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const id = await createPaste(
+      {
         content: req.body.content,
         ttl_seconds: req.body.ttl_seconds ? Number(req.body.ttl_seconds) : undefined,
         max_views: req.body.max_views ? Number(req.body.max_views) : undefined
-      })
-    });
+      },
+      req
+    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return res.status(400).send(`
-        <h3>Error creating paste</h3>
-        <pre>${errorText}</pre>
-        <a href="/">Go back</a>
-      `);
-    }
-
-    const data = await response.json();
-    res.redirect(data.url);
+    res.redirect(`/p/${id}`);
   } catch (err) {
-    res.status(500).send("Internal Server Error");
+    res.status(400).send(`
+      <h3>Error creating paste</h3>
+      <pre>${err.message}</pre>
+      <a href="/">Go back</a>
+    `);
   }
 });
 
@@ -181,7 +184,6 @@ app.get("/p/:id", async (req, res) => {
   paste.views += 1;
   await kv.set(key, paste);
 
-  res.setHeader("Content-Type", "text/html");
   res.send(`
     <html>
       <body>
