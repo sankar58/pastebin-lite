@@ -4,6 +4,7 @@ import { kv } from "@vercel/kv";
 
 const app = express();
 
+app.use(express.static("public"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -22,15 +23,25 @@ function now(req) {
 ========================= */
 app.get("/", (req, res) => {
   res.send(`
+    <!DOCTYPE html>
     <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Pastebin Lite</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
       <body>
-        <h2>Create Paste</h2>
-        <form method="POST" action="/create">
-          <textarea name="content" rows="8" cols="50" required></textarea><br/><br/>
-          TTL (seconds): <input type="number" name="ttl_seconds"/><br/><br/>
-          Max Views: <input type="number" name="max_views"/><br/><br/>
-          <button>Create</button>
-        </form>
+        <div class="container">
+          <h2>Create Paste</h2>
+          <form method="POST" action="/create">
+            <textarea name="content" rows="8" cols="50" required></textarea><br/><br/>
+            TTL (seconds):
+            <input type="number" name="ttl_seconds" /><br/><br/>
+            Max Views:
+            <input type="number" name="max_views" /><br/><br/>
+            <button>Create</button>
+          </form>
+        </div>
       </body>
     </html>
   `);
@@ -54,14 +65,19 @@ app.get("/api/healthz", async (req, res) => {
 async function createPaste(data, req) {
   const { content, ttl_seconds, max_views } = data;
 
-  // Validation
   if (!content || typeof content !== "string" || !content.trim()) {
     throw new Error("Invalid content");
   }
-  if (ttl_seconds !== undefined && (!Number.isInteger(ttl_seconds) || ttl_seconds < 1)) {
+  if (
+    ttl_seconds !== undefined &&
+    (!Number.isInteger(ttl_seconds) || ttl_seconds < 1)
+  ) {
     throw new Error("Invalid ttl_seconds");
   }
-  if (max_views !== undefined && (!Number.isInteger(max_views) || max_views < 1)) {
+  if (
+    max_views !== undefined &&
+    (!Number.isInteger(max_views) || max_views < 1)
+  ) {
     throw new Error("Invalid max_views");
   }
 
@@ -111,8 +127,12 @@ app.post("/create", async (req, res) => {
     const id = await createPaste(
       {
         content: req.body.content,
-        ttl_seconds: req.body.ttl_seconds ? Number(req.body.ttl_seconds) : undefined,
-        max_views: req.body.max_views ? Number(req.body.max_views) : undefined
+        ttl_seconds: req.body.ttl_seconds
+          ? Number(req.body.ttl_seconds)
+          : undefined,
+        max_views: req.body.max_views
+          ? Number(req.body.max_views)
+          : undefined
       },
       req
     );
@@ -135,7 +155,6 @@ app.get("/api/pastes/:id", async (req, res) => {
 
   const currentTime = now(req);
 
-  // TTL check
   if (paste.ttl_seconds !== null) {
     const expiresAt = paste.createdAt + paste.ttl_seconds * 1000;
     if (currentTime >= expiresAt) {
@@ -144,12 +163,10 @@ app.get("/api/pastes/:id", async (req, res) => {
     }
   }
 
-  // View limit check
   if (paste.max_views !== null && paste.views >= paste.max_views) {
     return res.status(404).json({ error: "View limit exceeded" });
   }
 
-  // Successful view
   paste.views += 1;
   await kv.set(key, paste);
 
@@ -162,7 +179,9 @@ app.get("/api/pastes/:id", async (req, res) => {
     expires_at:
       paste.ttl_seconds === null
         ? null
-        : new Date(paste.createdAt + paste.ttl_seconds * 1000).toISOString()
+        : new Date(
+            paste.createdAt + paste.ttl_seconds * 1000
+          ).toISOString()
   });
 });
 
@@ -179,7 +198,6 @@ app.get("/p/:id", async (req, res) => {
 
   const currentTime = now(req);
 
-  // TTL check
   if (paste.ttl_seconds !== null) {
     const expiresAt = paste.createdAt + paste.ttl_seconds * 1000;
     if (currentTime >= expiresAt) {
@@ -188,19 +206,25 @@ app.get("/p/:id", async (req, res) => {
     }
   }
 
-  // View limit check
   if (paste.max_views !== null && paste.views >= paste.max_views) {
     return res.status(404).send("View limit exceeded");
   }
 
-  // Successful view
   paste.views += 1;
   await kv.set(key, paste);
 
   res.send(`
+    <!DOCTYPE html>
     <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>View Paste</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
       <body>
-        <pre>${paste.content.replace(/</g, "&lt;")}</pre>
+        <div class="container">
+          <pre>${paste.content.replace(/</g, "&lt;")}</pre>
+        </div>
       </body>
     </html>
   `);
